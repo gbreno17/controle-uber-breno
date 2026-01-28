@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controle Uber Breno</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;
+ font-family:'Inter',sans-serif;
+ background:radial-gradient(circle at top, #0a0f1f, #050814);
+ color:#fff;
+}
+h1{text-align:center;margin:10px 0}
+.card{
+ background:#0f1a2e;
+ border:1px solid #1e2a44;
+ border-radius:14px;
+ padding:14px;
+ margin:10px;
+}
+input,select,button{
+ width:100%;
+ padding:12px;
+ margin-top:8px;
+ border:none;
+ border-radius:10px;
+ background:#132040;
+ color:#fff;
+ font-size:14px;
+}
+button{background:#2563eb;font-weight:600}
+button.del{background:#7f1d1d}
+.list{margin-top:10px;font-size:13px}
+.item{
+ background:#132040;
+ padding:8px;
+ border-radius:8px;
+ margin-top:5px;
+ display:flex;
+ justify-content:space-between;
+ align-items:center;
+}
+.valor{font-weight:bold}
+hr{border:1px solid #1e2a44}
+</style>
+</head>
+<body>
+
+<h1>🚗 Controle Uber Breno</h1>
+
+<!-- RECEITAS -->
+<div class="card">
+<h3>📥 Lançar Receita</h3>
+<input id="rData" type="date">
+<input id="rValor" type="number" placeholder="Valor R$">
+<input id="rKm" type="number" placeholder="Km rodados">
+<button onclick="salvarReceita()">Salvar Receita</button>
+<div class="list" id="listaReceitas"></div>
+</div>
+
+<!-- DESPESAS -->
+<div class="card">
+<h3>📤 Lançar Despesa</h3>
+<select id="dCat">
+<option>Lavagem</option>
+<option>Manutenção</option>
+<option>Internet</option>
+<option>Multa</option>
+<option>Outros</option>
+</select>
+<input id="dValor" type="number" placeholder="Valor R$">
+<input id="dData" type="date">
+<button onclick="salvarDespesa()">Salvar Despesa</button>
+<div class="list" id="listaDespesas"></div>
+</div>
+
+<!-- RELATÓRIO SEMANAL -->
+<div class="card">
+<h3>📊 Relatório Semanal</h3>
+<input id="semanaRef" type="date">
+<button onclick="gerarRelatorioSemanal()">Gerar Relatório</button>
+<div id="relatorioSemanal"></div>
+</div>
+
+<!-- RELATÓRIO MENSAL -->
+<div class="card">
+<h3>📆 Relatório Mensal</h3>
+<input id="mesRef" type="month">
+<button onclick="gerarRelatorioMensal()">Gerar Relatório</button>
+<div id="relatorioMensal"></div>
+</div>
+
+<script>
+// Firebase
+const firebaseConfig={
+ apiKey:"AIzaSyA-_H0sBY59QpuLX28hCh0ShPXseKA5Khc",
+ authDomain:"controle-uber-breno.firebaseapp.com",
+ projectId:"controle-uber-breno"
+};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.firestore();
+
+function hoje(){return new Date().toISOString().slice(0,10);}
+rData.value=hoje();
+dData.value=hoje();
+semanaRef.value=hoje();
+
+function brl(v){return Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});}
+
+// ===== RECEITAS =====
+async function salvarReceita(){
+ await db.collection("receitas").add({
+  data:rData.value,
+  valor:Number(rValor.value||0),
+  km:Number(rKm.value||0)
+ });
+ rValor.value=""; rKm.value="";
+ carregarReceitas();
+}
+
+async function excluirReceita(id){
+ await db.collection("receitas").doc(id).delete();
+ carregarReceitas();
+}
+
+async function carregarReceitas(){
+ const snap = await db.collection("receitas").orderBy("data","desc").get();
+ listaReceitas.innerHTML="";
+ snap.forEach(doc=>{
+  const r=doc.data();
+  listaReceitas.innerHTML += `
+   <div class="item">
+    <span>${r.data} - ${brl(r.valor)} (${r.km} km)</span>
+    <button class="del" onclick="excluirReceita('${doc.id}')">🗑️</button>
+   </div>`;
+ });
+}
+
+// ===== DESPESAS =====
+async function salvarDespesa(){
+ await db.collection("despesas").add({
+  data:dData.value,
+  valor:Number(dValor.value||0),
+  categoria:dCat.value
+ });
+ dValor.value="";
+ carregarDespesas();
+}
+
+async function excluirDespesa(id){
+ await db.collection("despesas").doc(id).delete();
+ carregarDespesas();
+}
+
+async function carregarDespesas(){
+ const snap = await db.collection("despesas").orderBy("data","desc").get();
+ listaDespesas.innerHTML="";
+ snap.forEach(doc=>{
+  const d=doc.data();
+  listaDespesas.innerHTML += `
+   <div class="item">
+    <span>${d.data} - ${d.categoria} - ${brl(d.valor)}</span>
+    <button class="del" onclick="excluirDespesa('${doc.id}')">🗑️</button>
+   </div>`;
+ });
+}
+
+// ===== RELATÓRIO SEMANAL =====
+async function gerarRelatorioSemanal(){
+ const dataBase=new Date(semanaRef.value);
+ const diaSemana=dataBase.getDay();
+ const diffSegunda=dataBase.getDate()-diaSemana+(diaSemana==0?-6:1);
+ const segunda=new Date(dataBase.setDate(diffSegunda));
+ const domingo=new Date(segunda); domingo.setDate(segunda.getDate()+6);
+ const inicio=segunda.toISOString().slice(0,10);
+ const fim=domingo.toISOString().slice(0,10);
+
+ const recSnap=await db.collection("receitas").get();
+ const despSnap=await db.collection("despesas").get();
+
+ let totalReceita=0, totalDespesa=0;
+ recSnap.forEach(doc=>{const r=doc.data(); if(r.data>=inicio && r.data<=fim){totalReceita+=Number(r.valor)}});
+ despSnap.forEach(doc=>{const d=doc.data(); if(d.data>=inicio && d.data<=fim){totalDespesa+=Number(d.valor)}});
+
+ const lucro = totalReceita - totalDespesa;
+
+ relatorioSemanal.innerHTML = `
+ <p>Receita Total: <b>${brl(totalReceita)}</b></p>
+ <p>Despesas Totais: ${brl(totalDespesa)}</p>
+ <hr>
+ <p class="valor">Lucro Semanal: ${brl(lucro)}</p>`;
+}
+
+// ===== RELATÓRIO MENSAL =====
+async function gerarRelatorioMensal(){
+ const mes = mesRef.value;
+ const recSnap=await db.collection("receitas").get();
+ const despSnap=await db.collection("despesas").get();
+
+ let totalReceita=0, totalDespesa=0;
+ recSnap.forEach(doc=>{const r=doc.data(); if(r.data.startsWith(mes)){totalReceita+=Number(r.valor)}});
+ despSnap.forEach(doc=>{const d=doc.data(); if(d.data.startsWith(mes)){totalDespesa+=Number(d.valor)}});
+
+ const lucro = totalReceita - totalDespesa;
+
+ relatorioMensal.innerHTML = `
+ <p>Receita Total: <b>${brl(totalReceita)}</b></p>
+ <p>Despesas Totais: ${brl(totalDespesa)}</p>
+ <hr>
+ <p class="valor">Lucro Mensal: ${brl(lucro)}</p>`;
+}
+
+// Inicializar listas
+carregarReceitas();
+carregarDespesas();
+</script>
+
+</body>
+</html>
